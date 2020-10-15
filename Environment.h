@@ -108,10 +108,23 @@ public:
 			   it != ie; ++ it) {
 		   Decl * decl = *it;
 		   if (VarDecl * vardecl = dyn_cast<VarDecl>(decl)) {
-			   mStack.back().bindDecl(vardecl, 0);
+			   if(vardecl->getType().getTypePtr()->isIntegerType() ||vardecl->getType().getTypePtr()->isCharType()){
+                    if(vardecl->hasInit()) mStack.back().bindDecl(vardecl, expr(vardecl->getInit()));
+               }
 		   }
 	   }
    }
+
+    int expr(Expr * expression){
+        expression = expression->IgnoreImpCasts();//what if we did not ignore the implicit cast?
+        if(auto literal = dyn_cast<IntegerLiteral>(expression)){
+            return literal->getValue().getSExtValue();
+        }else if (auto literal = dyn_cast<CharacterLiteral>(expression)){
+            return literal->getValue();
+        }
+        return 0;
+    }
+
    void declref(DeclRefExpr * declref) {
 	   mStack.back().setPC(declref);
 	   if (declref->getType()->isIntegerType()) {
