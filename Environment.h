@@ -29,8 +29,8 @@ public:
       assert (mVars.find(decl) != mVars.end());
       return mVars.find(decl)->second;
    }
-   void bindStmt(Stmt * stmt, int val) {
-	   mExprs[stmt] = val;
+   int bindStmt(Stmt * stmt, int val) {
+	   return mExprs[stmt] = val;
    }
    int getStmtVal(Stmt * stmt) {
 	   assert (mExprs.find(stmt) != mExprs.end());
@@ -107,11 +107,13 @@ public:
 	   for (DeclStmt::decl_iterator it = declstmt->decl_begin(), ie = declstmt->decl_end();
 			   it != ie; ++ it) {
 		   Decl * decl = *it;
-		   if (VarDecl * vardecl = dyn_cast<VarDecl>(decl)) {
+		  /*I think the if statement is not necessary*/
+           // if (VarDecl * vardecl = dyn_cast<VarDecl>(decl)) {
+             VarDecl * vardecl = dyn_cast<VarDecl>(decl);
 			   if(vardecl->getType().getTypePtr()->isIntegerType() ||vardecl->getType().getTypePtr()->isCharType()){
                     if(vardecl->hasInit()) mStack.back().bindDecl(vardecl, expr(vardecl->getInit()));
                }
-		   }
+		  // }
 	   }
    }
 
@@ -121,6 +123,14 @@ public:
             return literal->getValue().getSExtValue();
         }else if (auto literal = dyn_cast<CharacterLiteral>(expression)){
             return literal->getValue();
+        }else if(auto unaryExpr = dyn_cast<UnaryOperator>(expression)){
+            auto opcode = unaryExpr->getOpcode();
+            Expr * subExpr = unaryExpr->getSubExpr();
+            if(opcode == UO_Minus){
+                return mStack.back().bindStmt(unaryExpr, -1*expr(subExpr));
+            }else if(opcode == UO_Plus){
+                return mStack.back().bindStmt(unaryExpr, expr(subExpr));
+            }
         }
         return 0;
     }
