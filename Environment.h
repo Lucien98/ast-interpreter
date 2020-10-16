@@ -89,18 +89,57 @@ public:
    }
 
    /// !TODO Support comparison operation
-   void binop(BinaryOperator *bop) {
+   int binop(BinaryOperator *bop) {
 	   Expr * left = bop->getLHS();
 	   Expr * right = bop->getRHS();
 
-	   if (bop->isAssignmentOp()) {
+	   /*if (bop->isAssignmentOp()) {
 		   int val = mStack.back().getStmtVal(right);
 		   mStack.back().bindStmt(left, val);
 		   if (DeclRefExpr * declexpr = dyn_cast<DeclRefExpr>(left)) {
 			   Decl * decl = declexpr->getFoundDecl();
 			   mStack.back().bindDecl(decl, val);
 		   }
-	   }
+	   }*/
+       auto opCode = bop->getOpcode();
+       int leftVal = expr(left), rightVal = expr(right);
+       int val;
+       switch(opCode){
+           case BO_Assign:
+               val = mStack.back().getStmtVal(right);
+               mStack.back().bindStmt(left, val);
+               if(DeclRefExpr *declExpr = dyn_cast<DeclRefExpr>(left)){
+                   Decl *decl = declExpr->getFoundDecl();
+                   mStack.back().bindDecl(decl, val);
+               }
+               break;
+            case BO_Add:
+               mStack.back().bindStmt(bop, val = leftVal + rightVal);
+               break;
+            case BO_Sub:
+               mStack.back().bindStmt(bop, val = leftVal - rightVal);
+               break;
+            case BO_Mul:
+               mStack.back().bindStmt(bop, val = leftVal * rightVal);
+               break;
+            case BO_Div:
+               rightVal==0?printf("Error:number cannot be divided by zero\n"),exit(0):(void)0;
+               leftVal%rightVal==0?0:printf("Warning: number is not divided with no remainder\n");
+               mStack.back().bindStmt(bop, val = int(leftVal/rightVal));
+               break;
+            case BO_LT:
+               mStack.back().bindStmt(bop, val = (leftVal<rightVal));
+               break;
+            case BO_GT:
+               mStack.back().bindStmt(bop, val = (leftVal>rightVal));
+               break;
+            case BO_EQ:
+               mStack.back().bindStmt(bop, val = (leftVal==rightVal));
+               break;
+            default:
+               break;
+       }
+        return val;
    }
 
    void decl(DeclStmt * declstmt) {
@@ -119,11 +158,11 @@ public:
 
     int expr(Expr * expression){
         expression = expression->IgnoreImpCasts();//what if we did not ignore the implicit cast?
-        if(auto literal = dyn_cast<IntegerLiteral>(expression)){
+        if(auto literal = dyn_cast<IntegerLiteral>(expression)){             //int expr
             return literal->getValue().getSExtValue();
-        }else if (auto literal = dyn_cast<CharacterLiteral>(expression)){
+        }else if (auto literal = dyn_cast<CharacterLiteral>(expression)){    //char expr
             return literal->getValue();
-        }else if(auto unaryExpr = dyn_cast<UnaryOperator>(expression)){
+        }else if(auto unaryExpr = dyn_cast<UnaryOperator>(expression)){      //unary expr
             auto opcode = unaryExpr->getOpcode();
             Expr * subExpr = unaryExpr->getSubExpr();
             if(opcode == UO_Minus){
@@ -131,18 +170,27 @@ public:
             }else if(opcode == UO_Plus){
                 return mStack.back().bindStmt(unaryExpr, expr(subExpr));
             }
+        }else if(auto declRef = dyn_cast<DeclRefExpr>(expression)){          //declref expr
+            return declref(declRef);
+        }else if(auto bop = dyn_cast<BinaryOperator>(expression)){           //binary operator expr
+            return binop(bop);
+        }else if(auto paren = dyn_cast<ParenExpr>(expression)){              //parenthesis expr
+            return expr(paren->getSubExpr());
+
         }
         return 0;
     }
 
-   void declref(DeclRefExpr * declref) {
+   int declref(DeclRefExpr * declref) {
 	   mStack.back().setPC(declref);
 	   if (declref->getType()->isIntegerType()) {
 		   Decl* decl = declref->getFoundDecl();
 
 		   int val = mStack.back().getDeclVal(decl);
 		   mStack.back().bindStmt(declref, val);
+           return val;
 	   }
+       return 0;
    }
 
    void cast(CastExpr * castexpr) {
