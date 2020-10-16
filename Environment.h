@@ -106,11 +106,10 @@ public:
        int val;
        switch(opCode){
            case BO_Assign:
-               val = mStack.back().getStmtVal(right);
-               mStack.back().bindStmt(left, val);
+               mStack.back().bindStmt(left, rightVal);
                if(DeclRefExpr *declExpr = dyn_cast<DeclRefExpr>(left)){
                    Decl *decl = declExpr->getFoundDecl();
-                   mStack.back().bindDecl(decl, val);
+                   mStack.back().bindDecl(decl, rightVal);
                }
                break;
             case BO_Add:
@@ -151,6 +150,7 @@ public:
              VarDecl * vardecl = dyn_cast<VarDecl>(decl);
 			   if(vardecl->getType().getTypePtr()->isIntegerType() ||vardecl->getType().getTypePtr()->isCharType()){
                     if(vardecl->hasInit()) mStack.back().bindDecl(vardecl, expr(vardecl->getInit()));
+                    else mStack.back().bindDecl(vardecl, 0);
                }
 		  // }
 	   }
