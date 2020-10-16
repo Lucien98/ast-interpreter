@@ -38,12 +38,17 @@ public:
 	   mEnv->decl(declstmt);
    }
    virtual void VisitIfStmt(IfStmt * ifstmt){
-       mEnv->expr(ifstmt->getCond())?VisitStmt(ifstmt->getThen()):\
-           ifstmt->getElse()? VisitStmt(ifstmt->getElse()):(void)0;
+       mEnv->expr(ifstmt->getCond())?Visit(ifstmt->getThen()):\
+           ifstmt->getElse()? Visit(ifstmt->getElse()):(void)0;
    }
    virtual void VisitWhileStmt(WhileStmt * whilestmt){
        while(mEnv->expr(whilestmt->getCond())){
            VisitStmt(whilestmt->getBody());
+       }
+   }
+   virtual void VisitForStmt(ForStmt * forstmt){
+       for(forstmt->getInit();mEnv->expr(forstmt->getCond());Visit(forstmt->getInc())){
+           VisitStmt(forstmt->getBody());
        }
    }
 private:

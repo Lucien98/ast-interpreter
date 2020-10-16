@@ -92,15 +92,6 @@ public:
    int binop(BinaryOperator *bop) {
 	   Expr * left = bop->getLHS();
 	   Expr * right = bop->getRHS();
-
-	   /*if (bop->isAssignmentOp()) {
-		   int val = mStack.back().getStmtVal(right);
-		   mStack.back().bindStmt(left, val);
-		   if (DeclRefExpr * declexpr = dyn_cast<DeclRefExpr>(left)) {
-			   Decl * decl = declexpr->getFoundDecl();
-			   mStack.back().bindDecl(decl, val);
-		   }
-	   }*/
        auto opCode = bop->getOpcode();
        int leftVal = expr(left), rightVal = expr(right);
        int val;
