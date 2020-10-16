@@ -72,6 +72,7 @@ public:
 
    /// Initialize the Environment
    void init(TranslationUnitDecl * unit) {
+	   mStack.push_back(StackFrame());
 	   for (TranslationUnitDecl::decl_iterator i =unit->decls_begin(), e = unit->decls_end(); i != e; ++ i) {
 		   if (FunctionDecl * fdecl = dyn_cast<FunctionDecl>(*i) ) {
 			   if (fdecl->getName().equals("FREE")) mFree = fdecl;
@@ -79,9 +80,15 @@ public:
 			   else if (fdecl->getName().equals("GET")) mInput = fdecl;
 			   else if (fdecl->getName().equals("PRINT")) mOutput = fdecl;
 			   else if (fdecl->getName().equals("main")) mEntry = fdecl;
-		   }
+		   }else{
+             if(VarDecl * vardecl = dyn_cast<VarDecl>(*i)){
+			   if(vardecl->getType().getTypePtr()->isIntegerType() ||vardecl->getType().getTypePtr()->isCharType()){
+                    if(vardecl->hasInit()) mStack.back().bindDecl(vardecl, expr(vardecl->getInit()));
+                    else mStack.back().bindDecl(vardecl, 0);
+                }
+               }
+           }
 	   }
-	   mStack.push_back(StackFrame());
    }
 
    FunctionDecl * getEntry() {
@@ -136,14 +143,12 @@ public:
 	   for (DeclStmt::decl_iterator it = declstmt->decl_begin(), ie = declstmt->decl_end();
 			   it != ie; ++ it) {
 		   Decl * decl = *it;
-		  /*I think the if statement is not necessary*/
-           // if (VarDecl * vardecl = dyn_cast<VarDecl>(decl)) {
-             VarDecl * vardecl = dyn_cast<VarDecl>(decl);
+           if (VarDecl * vardecl = dyn_cast<VarDecl>(decl)) {
 			   if(vardecl->getType().getTypePtr()->isIntegerType() ||vardecl->getType().getTypePtr()->isCharType()){
                     if(vardecl->hasInit()) mStack.back().bindDecl(vardecl, expr(vardecl->getInit()));
                     else mStack.back().bindDecl(vardecl, 0);
                }
-		  // }
+		   }
 	   }
    }
 
