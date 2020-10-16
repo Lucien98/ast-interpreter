@@ -41,6 +41,11 @@ public:
        mEnv->expr(ifstmt->getCond())?VisitStmt(ifstmt->getThen()):\
            ifstmt->getElse()? VisitStmt(ifstmt->getElse()):(void)0;
    }
+   virtual void VisitWhileStmt(WhileStmt * whilestmt){
+       while(mEnv->expr(whilestmt->getCond())){
+           VisitStmt(whilestmt->getBody());
+       }
+   }
 private:
    Environment * mEnv;
 };
