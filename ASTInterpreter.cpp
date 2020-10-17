@@ -32,7 +32,14 @@ public:
    }
    virtual void VisitCallExpr(CallExpr * call) {
 	   VisitStmt(call);
-	   mEnv->call(call);
+	   mEnv->call(call, 0);
+       std::string sys_fun("GET, PRINT, MALLOC, FREE");
+       if(FunctionDecl *funcdecl = call->getDirectCallee()){
+           if(sys_fun.find(funcdecl->getName())==std::string::npos){
+               VisitStmt(funcdecl->getBody());
+               mEnv->call(call, 1);
+           }
+       }
    }
    virtual void VisitDeclStmt(DeclStmt * declstmt) {
 	   mEnv->decl(declstmt);
@@ -50,6 +57,10 @@ public:
        for(forstmt->getInit();mEnv->expr(forstmt->getCond());Visit(forstmt->getInc())){
            VisitStmt(forstmt->getBody());
        }
+   }
+   virtual void VisitReturnStmt(ReturnStmt * returnstmt){
+       VisitStmt(returnstmt);
+       mEnv->ret(returnstmt);
    }
 private:
    Environment * mEnv;
