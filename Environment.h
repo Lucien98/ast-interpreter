@@ -123,16 +123,24 @@ public:
                        if(VarDecl *vardecl = dyn_cast<VarDecl>(decl)){
                            if(auto array = dyn_cast<ConstantArrayType>(vardecl->getType().getTypePtr())){
                                if(array->getElementType()->isIntegerType()){
-                                   int *p = (int*) mStack.back().getDeclVal(vardecl);
+                                   int64_t *p = (int64_t*) mStack.back().getDeclVal(vardecl);
                                    *(p+index) = rightVal;
                                }
                            }
                        }
 
                    }
+               }else if(auto unaryexpr = dyn_cast<UnaryOperator>(left)){
+                   int64_t *p = (int64_t *)(expr(unaryexpr->getSubExpr()));
+                   *p = rightVal;
                }
                break;
             case BO_Add:
+               if(left->getType().getTypePtr()->isPointerType()){
+                   int64_t p = expr(left);
+                   p += sizeof(int64_t)*rightVal;
+                   mStack.back().bindStmt(bop, val = p);
+               }else
                mStack.back().bindStmt(bop, val = leftVal + rightVal);
                break;
             case BO_Sub:
@@ -166,7 +174,9 @@ public:
 			   it != ie; ++ it) {
 		   Decl * decl = *it;
            if (VarDecl * vardecl = dyn_cast<VarDecl>(decl)) {
-			   if(vardecl->getType().getTypePtr()->isIntegerType() ||vardecl->getType().getTypePtr()->isCharType()){
+               const Type * type = vardecl->getType().getTypePtr();
+               if(type->isIntegerType() || type->isCharType() || type->isPointerType()){
+			   //if(vardecl->getType().getTypePtr()->isIntegerType() ||vardecl->getType().getTypePtr()->isCharType() || vardecl->getType().getTypePtr() ){
                     if(vardecl->hasInit()) mStack.back().bindDecl(vardecl, expr(vardecl->getInit()));
                     else mStack.back().bindDecl(vardecl, 0);
                }else{
@@ -200,6 +210,8 @@ public:
                 return mStack.back().bindStmt(unaryExpr, -1*expr(subExpr));
             }else if(opcode == UO_Plus){
                 return mStack.back().bindStmt(unaryExpr, expr(subExpr));
+            }else if(opcode == UO_Deref){
+                return mStack.back().bindStmt(unaryExpr, *(int64_t *)expr(unaryExpr->getSubExpr()));
             }
         }else if(auto declRef = dyn_cast<DeclRefExpr>(expression)){          //declref expr
             return declref(declRef);
@@ -223,13 +235,20 @@ public:
             }
         }else if(auto callexpr = dyn_cast<CallExpr>(expression)){
             return mStack.back().getStmtVal(callexpr);
+        }else if(auto castexpr = dyn_cast<CStyleCastExpr>(expression)){
+            return expr(castexpr->getSubExpr());
+        }else if(auto sizeofexpr = dyn_cast<UnaryExprOrTypeTraitExpr>(expression)){
+            if(sizeofexpr->getArgumentType()->isPointerType())
+                return sizeof(int64_t *);
+            else return sizeof(int64_t );
         }
         return 0;
     }
 
    int64_t declref(DeclRefExpr * declref) {
 	   mStack.back().setPC(declref);
-	   if (declref->getType()->isIntegerType()) {
+       auto type = declref->getType();
+	   if (type->isIntegerType() || type->isPointerType()) {
 		   Decl* decl = declref->getFoundDecl();
 
 		   int64_t val = mStack.back().getDeclVal(decl);
@@ -238,7 +257,7 @@ public:
 	   }
        return 0;
    }
-
+/*
    void cast(CastExpr * castexpr) {
 	   mStack.back().setPC(castexpr);
 	   if (castexpr->getType()->isIntegerType()) {
@@ -247,7 +266,7 @@ public:
 		   mStack.back().bindStmt(castexpr, val );
 	   }
    }
-
+*/
    void ret(ReturnStmt * returnstmt){
        mStack.back().setRetValue(expr(returnstmt->getRetValue()));
    }
@@ -270,8 +289,11 @@ public:
                llvm::errs() << val;
            } else if (callee == mMalloc){
                /// You could add your code here for Function call Return
+               int size = expr(callexpr->getArg(0));
+               int64_t *p = (int64_t *)malloc(size);
+               mStack.back().bindStmt(callexpr, (int64_t)p);
            }else if (callee == mFree){
-               
+               std::free( (int64_t *) (expr(callexpr->getArg(0))) );
            }else{
                vector<int64_t> args;
                for (auto i=callexpr->arg_begin(), e=callexpr->arg_end(); i!=e; args.push_back(expr(*(i++))));
