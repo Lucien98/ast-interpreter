@@ -19,6 +19,7 @@ class StackFrame {
    /// The current stmt
    Stmt * mPC;
    int64_t retValue;
+   bool hasReturn = false;
 public:
    StackFrame() : mVars(), mExprs(), mPC() {
    }
@@ -48,6 +49,12 @@ public:
    }
    int64_t getRetValue(){
        return retValue;
+   }
+   bool getHasReturn(){
+       return hasReturn;
+   }
+   void setHasReturn(bool hasreturn){
+       hasReturn = hasreturn;
    }
 };
 
@@ -125,6 +132,9 @@ public:
                                if(array->getElementType()->isIntegerType()){
                                    int64_t *p = (int64_t*) mStack.back().getDeclVal(vardecl);
                                    *(p+index) = rightVal;
+                               }else{
+                                   int64_t **p = (int64_t **)mStack.back().getDeclVal(vardecl);
+                                   *(p+index) = (int64_t *)rightVal;
                                }
                            }
                        }
@@ -190,6 +200,10 @@ public:
                            char * char_array = new char[length];
                            for(int i=0; i<length; char_array[i++]=0);
                            mStack.back().bindDecl(vardecl, (int64_t)char_array);
+                       }else{
+                           int64_t ** ptr_array = new int64_t*[length];
+                           for(int i=0; i<length; ptr_array[i++]=0);
+                           mStack.back().bindDecl(vardecl, (int64_t)ptr_array);
                        }
                    }
                }
@@ -229,6 +243,9 @@ public:
                         if(array->getElementType()->isIntegerType()){
                             int *array =(int *) mStack.back().getDeclVal(vardecl);
                             return *(array+index);
+                        }else{
+                            int64_t **elem = (int64_t **)mStack.back().getDeclVal(vardecl);
+                            return (int64_t)(*(elem+index));
                         }
                     }
                 }
@@ -269,6 +286,11 @@ public:
 */
    void ret(ReturnStmt * returnstmt){
        mStack.back().setRetValue(expr(returnstmt->getRetValue()));
+       mStack.back().setHasReturn(true);
+   }
+
+   bool hasReturn(){
+       return mStack.back().getHasReturn();
    }
 
    /// !TODO Support Function Call
@@ -286,7 +308,7 @@ public:
                Expr * decl = callexpr->getArg(0);
                //val = mStack.back().getStmtVal(decl);
                val = expr(decl);
-               llvm::errs() << val;
+               llvm::errs() << val << " ";
            } else if (callee == mMalloc){
                /// You could add your code here for Function call Return
                int size = expr(callexpr->getArg(0));

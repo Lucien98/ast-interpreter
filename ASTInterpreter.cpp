@@ -19,14 +19,17 @@ public:
    virtual ~InterpreterVisitor() {}
 
    virtual void VisitBinaryOperator (BinaryOperator * bop) {
+       if(mEnv->hasReturn()) return;
 	   VisitStmt(bop);
 	   mEnv->binop(bop);
    }
    virtual void VisitDeclRefExpr(DeclRefExpr * expr) {
-	   VisitStmt(expr);
+       if(mEnv->hasReturn()) return;
+       VisitStmt(expr);
 	   mEnv->declref(expr);
    }
    virtual void VisitCallExpr(CallExpr * call) {
+       if(mEnv->hasReturn()) return;
 	   VisitStmt(call);
 	   mEnv->call(call, 0);
        std::string sys_fun("GET, PRINT, MALLOC, FREE");
@@ -38,25 +41,31 @@ public:
        }
    }
    virtual void VisitDeclStmt(DeclStmt * declstmt) {
+       if(mEnv->hasReturn()) return;
 	   mEnv->decl(declstmt);
    }
    virtual void VisitIfStmt(IfStmt * ifstmt){
+       if(mEnv->hasReturn()) return;
        mEnv->expr(ifstmt->getCond())?Visit(ifstmt->getThen()):\
            ifstmt->getElse()? Visit(ifstmt->getElse()):(void)0;
    }
    virtual void VisitWhileStmt(WhileStmt * whilestmt){
+       if(mEnv->hasReturn()) return;
        while(mEnv->expr(whilestmt->getCond())){
            VisitStmt(whilestmt->getBody());
        }
    }
    virtual void VisitForStmt(ForStmt * forstmt){
+       if(mEnv->hasReturn()) return;
        for(forstmt->getInit();mEnv->expr(forstmt->getCond());Visit(forstmt->getInc())){
            VisitStmt(forstmt->getBody());
        }
    }
    virtual void VisitReturnStmt(ReturnStmt * returnstmt){
-       Visit(returnstmt->getRetValue());
+       if(mEnv->hasReturn()) return;
+       VisitStmt(returnstmt->getRetValue());
        mEnv->ret(returnstmt);
+       //VisitStmt(returnstmt);
    }
 private:
    Environment * mEnv;
