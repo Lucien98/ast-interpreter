@@ -21,7 +21,6 @@ class StackFrame {
    /// The current stmt
    Stmt * mPC;
    int64_t retValue;
-   bool hasReturn = false;
 public:
    StackFrame() : mVars(), mExprs(), mPC() {
    }
@@ -51,12 +50,6 @@ public:
    }
    int64_t getRetValue(){
        return retValue;
-   }
-   bool getHasReturn(){
-       return hasReturn;
-   }
-   void setHasReturn(bool hasreturn){
-       hasReturn = hasreturn;
    }
 };
 
@@ -116,7 +109,6 @@ public:
        switch(opCode){
            case BO_Assign:
                if(DeclRefExpr *declExpr = dyn_cast<DeclRefExpr>(left)){
-
                    mStack.back().bindStmt(left, rightVal);
                    Decl *decl = declExpr->getFoundDecl();
                    mStack.back().bindDecl(decl, rightVal);
@@ -212,11 +204,6 @@ public:
        mStack.back().setRetValue(
                mStack.back().getStmtVal(returnstmt->getRetValue()));
        throw ReturnException();
-       mStack.back().setHasReturn(true);
-   }
-
-   bool hasReturn(){
-       return mStack.back().getHasReturn();
    }
 
    /// !TODO Support Function Call
