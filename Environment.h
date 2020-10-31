@@ -8,9 +8,11 @@
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendAction.h"
 #include "clang/Tooling/Tooling.h"
+#include <exception>
 using namespace std;
 using namespace clang;
 
+class ReturnException : public std::exception{};
 class StackFrame {
    /// StackFrame maps Variable Declaration to Value
    /// Which are either integer or addresses (also represented using an Integer value)
@@ -58,17 +60,6 @@ public:
    }
 };
 
-/// Heap maps address to a value
-/*
-class Heap {
-public:
-   int Malloc(int size) ;
-   void Free (int addr) ;
-   void Update(int addr, int val) ;
-   int get(int addr);
-};
-*/
-
 class Environment {
    std::vector<StackFrame> mStack;
 
@@ -97,7 +88,12 @@ public:
 		   }else{
              if(VarDecl * vardecl = dyn_cast<VarDecl>(*i)){
 			   if(vardecl->getType().getTypePtr()->isIntegerType() ||vardecl->getType().getTypePtr()->isCharType()){
-                    if(vardecl->hasInit()) mStack.back().bindDecl(vardecl, expr(vardecl->getInit()));
+                   if(vardecl->hasInit()) {
+                       if (auto literal = dyn_cast<IntegerLiteral>(vardecl->getInit())){
+                           intliteral(literal); 
+                           mStack.back().bindDecl(vardecl, literal->getValue().getSExtValue());
+                       }
+                   }
                     else mStack.back().bindDecl(vardecl, 0);
                 }
                }
@@ -114,7 +110,8 @@ public:
 	   Expr * left = bop->getLHS();
 	   Expr * right = bop->getRHS();
        auto opCode = bop->getOpcode();
-       int64_t leftVal = expr(left), rightVal = expr(right);
+       int64_t leftVal = mStack.back().getStmtVal(left),
+               rightVal = mStack.back().getStmtVal(right);
        int64_t val;
        switch(opCode){
            case BO_Assign:
@@ -124,32 +121,19 @@ public:
                    Decl *decl = declExpr->getFoundDecl();
                    mStack.back().bindDecl(decl, rightVal);
                }else if(auto array = dyn_cast<ArraySubscriptExpr>(left)){
-                   if(DeclRefExpr *declExpr = dyn_cast<DeclRefExpr>(array->getLHS()->IgnoreImpCasts())){
-                       Decl * decl = declExpr->getFoundDecl();
-                       int64_t index = expr(array->getRHS());
-                       if(VarDecl *vardecl = dyn_cast<VarDecl>(decl)){
-                           if(auto array = dyn_cast<ConstantArrayType>(vardecl->getType().getTypePtr())){
-                               if(array->getElementType()->isIntegerType()){
-                                   int64_t *p = (int64_t*) mStack.back().getDeclVal(vardecl);
-                                   *(p+index) = rightVal;
-                               }else{
-                                   int64_t **p = (int64_t **)mStack.back().getDeclVal(vardecl);
-                                   *(p+index) = (int64_t *)rightVal;
-                               }
-                           }
-                       }
-
-                   }
-               }else if(auto unaryexpr = dyn_cast<UnaryOperator>(left)){
-                   int64_t *p = (int64_t *)(expr(unaryexpr->getSubExpr()));
-                   *p = rightVal;
-               }
+                   int64_t base = mStack.back().getStmtVal(array->getLHS()->IgnoreImpCasts()),
+                           offset = mStack.back().getStmtVal(array->getRHS()->IgnoreImpCasts());
+                   *(int64_t *)(base+offset*8) = rightVal;
+                   mStack.back().bindStmt(left, rightVal);
+              }else if(auto unaryexpr = dyn_cast<UnaryOperator>(left)){
+                   * (int64_t *)(mStack.back().getStmtVal(unaryexpr->getSubExpr()))=rightVal;
+                   mStack.back().bindStmt(left, rightVal);
+              }
                break;
             case BO_Add:
                if(left->getType().getTypePtr()->isPointerType()){
-                   int64_t p = expr(left);
-                   p += sizeof(int64_t)*rightVal;
-                   mStack.back().bindStmt(bop, val = p);
+                   leftVal += sizeof(int64_t)*rightVal;
+                   mStack.back().bindStmt(bop, val = leftVal);
                }else
                mStack.back().bindStmt(bop, val = leftVal + rightVal);
                break;
@@ -186,8 +170,9 @@ public:
            if (VarDecl * vardecl = dyn_cast<VarDecl>(decl)) {
                const Type * type = vardecl->getType().getTypePtr();
                if(type->isIntegerType() || type->isCharType() || type->isPointerType()){
-			   //if(vardecl->getType().getTypePtr()->isIntegerType() ||vardecl->getType().getTypePtr()->isCharType() || vardecl->getType().getTypePtr() ){
-                    if(vardecl->hasInit()) mStack.back().bindDecl(vardecl, expr(vardecl->getInit()));
+                    if(vardecl->hasInit()) 
+                        mStack.back().bindDecl(vardecl, 
+                                (dyn_cast<IntegerLiteral>(vardecl->getInit())->getValue().getSExtValue()));
                     else mStack.back().bindDecl(vardecl, 0);
                }else{
                    if(auto array = dyn_cast<ConstantArrayType>(vardecl->getType().getTypePtr())){
@@ -211,81 +196,22 @@ public:
 	   }
    }
 
-    int64_t expr(Expr * expression){
-        expression = expression->IgnoreImpCasts();//what if we did not ignore the implicit cast?
-        if(auto literal = dyn_cast<IntegerLiteral>(expression)){             //int expr
-            return literal->getValue().getSExtValue();
-        }else if (auto literal = dyn_cast<CharacterLiteral>(expression)){    //char expr
-            return literal->getValue();
-        }else if(auto unaryExpr = dyn_cast<UnaryOperator>(expression)){      //unary expr
-            auto opcode = unaryExpr->getOpcode();
-            Expr * subExpr = unaryExpr->getSubExpr();
-            if(opcode == UO_Minus){
-                return mStack.back().bindStmt(unaryExpr, -1*expr(subExpr));
-            }else if(opcode == UO_Plus){
-                return mStack.back().bindStmt(unaryExpr, expr(subExpr));
-            }else if(opcode == UO_Deref){
-                return mStack.back().bindStmt(unaryExpr, *(int64_t *)expr(unaryExpr->getSubExpr()));
-            }
-        }else if(auto declRef = dyn_cast<DeclRefExpr>(expression)){          //declref expr
-            return declref(declRef);
-        }else if(auto bop = dyn_cast<BinaryOperator>(expression)){           //binary operator expr
-            return binop(bop);
-        }else if(auto paren = dyn_cast<ParenExpr>(expression)){              //parenthesis expr
-            return expr(paren->getSubExpr());
-        }else if(auto array = dyn_cast<ArraySubscriptExpr>(expression)){
-            //to test if expression is array type 
-            if(DeclRefExpr * declref = dyn_cast<DeclRefExpr>(array->getLHS()->IgnoreImpCasts())){
-                Decl * decl = declref->getFoundDecl();
-                int64_t index = expr(array->getRHS());
-                if(auto vardecl = dyn_cast<VarDecl>(decl)){
-                    if(auto array = dyn_cast<ConstantArrayType>(vardecl->getType().getTypePtr())){
-                        if(array->getElementType()->isIntegerType()){
-                            int *array =(int *) mStack.back().getDeclVal(vardecl);
-                            return *(array+index);
-                        }else{
-                            int64_t **elem = (int64_t **)mStack.back().getDeclVal(vardecl);
-                            return (int64_t)(*(elem+index));
-                        }
-                    }
-                }
-            }
-        }else if(auto callexpr = dyn_cast<CallExpr>(expression)){
-            return mStack.back().getStmtVal(callexpr);
-        }else if(auto castexpr = dyn_cast<CStyleCastExpr>(expression)){
-            return expr(castexpr->getSubExpr());
-        }else if(auto sizeofexpr = dyn_cast<UnaryExprOrTypeTraitExpr>(expression)){
-            if(sizeofexpr->getArgumentType()->isPointerType())
-                return sizeof(int64_t *);
-            else return sizeof(int64_t );
-        }
-        return 0;
-    }
-
    int64_t declref(DeclRefExpr * declref) {
 	   mStack.back().setPC(declref);
        auto type = declref->getType();
-	   if (type->isIntegerType() || type->isPointerType()) {
+	   mStack.back().bindStmt(declref, 0);//for MALLOC function, it is a declrefexpr but it was not bound
+       if (type->isIntegerType() || type->isPointerType() || type->isArrayType()) {
 		   Decl* decl = declref->getFoundDecl();
-
 		   int64_t val = mStack.back().getDeclVal(decl);
 		   mStack.back().bindStmt(declref, val);
            return val;
 	   }
        return 0;
    }
-/*
-   void cast(CastExpr * castexpr) {
-	   mStack.back().setPC(castexpr);
-	   if (castexpr->getType()->isIntegerType()) {
-		   Expr * expr = castexpr->getSubExpr();
-		   int64_t val = mStack.back().getStmtVal(expr);
-		   mStack.back().bindStmt(castexpr, val );
-	   }
-   }
-*/
-   void ret(ReturnStmt * returnstmt){
-       mStack.back().setRetValue(expr(returnstmt->getRetValue()));
+  void ret(ReturnStmt * returnstmt){
+       mStack.back().setRetValue(
+               mStack.back().getStmtVal(returnstmt->getRetValue()));
+       throw ReturnException();
        mStack.back().setHasReturn(true);
    }
 
@@ -306,19 +232,18 @@ public:
               mStack.back().bindStmt(callexpr, val);
            } else if (callee == mOutput) {
                Expr * decl = callexpr->getArg(0);
-               //val = mStack.back().getStmtVal(decl);
-               val = expr(decl);
+               val = mStack.back().getStmtVal(decl);
                llvm::errs() << val << " ";
            } else if (callee == mMalloc){
                /// You could add your code here for Function call Return
-               int size = expr(callexpr->getArg(0));
+               int size = mStack.back().getStmtVal(callexpr->getArg(0));
                int64_t *p = (int64_t *)malloc(size);
                mStack.back().bindStmt(callexpr, (int64_t)p);
            }else if (callee == mFree){
-               std::free( (int64_t *) (expr(callexpr->getArg(0))) );
+               std::free( (int64_t *) (mStack.back().getStmtVal(callexpr->getArg(0))) );
            }else{
                vector<int64_t> args;
-               for (auto i=callexpr->arg_begin(), e=callexpr->arg_end(); i!=e; args.push_back(expr(*(i++))));
+               for (auto i=callexpr->arg_begin(), e=callexpr->arg_end(); i!=e; args.push_back(mStack.back().getStmtVal(*(i++))));
                mStack.push_back(StackFrame());
                int j = 0;
                for (auto i=callee->param_begin(), e=callee->param_end(); i!=e; i++,j++)
@@ -329,6 +254,49 @@ public:
            mStack.pop_back();
            mStack.back().bindStmt(callexpr, retvalue);
        }
+   }
+
+   void intliteral(IntegerLiteral * integer){
+       mStack.back().bindStmt(integer, integer->getValue().getSExtValue());
+   }
+
+   void cast(CastExpr * cast){
+       if (cast->getType()->isIntegerType() || cast->getType()->isPointerType()){
+           int64_t val = mStack.back().getStmtVal(cast->getSubExpr());
+           mStack.back().bindStmt(cast, val);
+       }
+   }
+
+   void sizeofexpr(UnaryExprOrTypeTraitExpr * sizeofexpr){
+       if(sizeofexpr->getArgumentType()->isPointerType())
+           mStack.back().bindStmt(sizeofexpr, sizeof(int64_t *));
+       else
+           mStack.back().bindStmt(sizeofexpr, sizeof(int64_t));
+   }
+
+   void unaryexpr(UnaryOperator * unaryexpr){
+       auto opcode = unaryexpr->getOpcode();
+       int64_t val = mStack.back().getStmtVal(unaryexpr->getSubExpr());
+       if(opcode == UO_Minus){
+           mStack.back().bindStmt(unaryexpr, -1*val);
+       }else if(opcode = UO_Deref){
+           mStack.back().bindStmt(unaryexpr, *(int64_t *)val);
+       }
+   }
+
+   void paren(ParenExpr * paren){
+       int64_t val = mStack.back().getStmtVal(paren->getSubExpr());
+       mStack.back().bindStmt(paren, val);
+   }
+   
+   void arraysub(ArraySubscriptExpr * array){
+       int64_t base = mStack.back().getStmtVal(array->getLHS()->IgnoreImpCasts()),
+               offset = mStack.back().getStmtVal(array->getRHS()->IgnoreImpCasts());
+       mStack.back().bindStmt(array, *(int64_t *)(base+offset*8));
+   }
+
+   int64_t getcond(Expr * expr){
+       return mStack.back().getStmtVal(expr);
    }
 };
 

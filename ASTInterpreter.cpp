@@ -19,54 +19,72 @@ public:
    virtual ~InterpreterVisitor() {}
 
    virtual void VisitBinaryOperator (BinaryOperator * bop) {
-       if(mEnv->hasReturn()) return;
-	   VisitStmt(bop);
+       VisitStmt(bop);
 	   mEnv->binop(bop);
    }
    virtual void VisitDeclRefExpr(DeclRefExpr * expr) {
-       if(mEnv->hasReturn()) return;
        VisitStmt(expr);
 	   mEnv->declref(expr);
    }
    virtual void VisitCallExpr(CallExpr * call) {
-       if(mEnv->hasReturn()) return;
-	   VisitStmt(call);
+       VisitStmt(call);
 	   mEnv->call(call, 0);
        std::string sys_fun("GET, PRINT, MALLOC, FREE");
        if(FunctionDecl *funcdecl = call->getDirectCallee()){
            if(sys_fun.find(funcdecl->getName())==std::string::npos){
-               VisitStmt(funcdecl->getBody());
+               try {
+                   VisitStmt(funcdecl->getBody());
+               }catch(ReturnException &e){};
                mEnv->call(call, 1);
            }
        }
    }
    virtual void VisitDeclStmt(DeclStmt * declstmt) {
-       if(mEnv->hasReturn()) return;
 	   mEnv->decl(declstmt);
    }
    virtual void VisitIfStmt(IfStmt * ifstmt){
-       if(mEnv->hasReturn()) return;
-       mEnv->expr(ifstmt->getCond())?Visit(ifstmt->getThen()):\
+       Visit(ifstmt->getCond());
+       mEnv->getcond(ifstmt->getCond())?Visit(ifstmt->getThen()):\
            ifstmt->getElse()? Visit(ifstmt->getElse()):(void)0;
    }
    virtual void VisitWhileStmt(WhileStmt * whilestmt){
-       if(mEnv->hasReturn()) return;
-       while(mEnv->expr(whilestmt->getCond())){
+      while(Visit(whilestmt->getCond()),mEnv->getcond(whilestmt->getCond())){
            VisitStmt(whilestmt->getBody());
        }
    }
    virtual void VisitForStmt(ForStmt * forstmt){
-       if(mEnv->hasReturn()) return;
-       for(forstmt->getInit();mEnv->expr(forstmt->getCond());Visit(forstmt->getInc())){
+     for(forstmt->getInit();Visit(forstmt->getCond()),mEnv->getcond(forstmt->getCond());Visit(forstmt->getInc())){
            VisitStmt(forstmt->getBody());
        }
    }
    virtual void VisitReturnStmt(ReturnStmt * returnstmt){
-       if(mEnv->hasReturn()) return;
-       VisitStmt(returnstmt->getRetValue());
+       VisitStmt(returnstmt);
        mEnv->ret(returnstmt);
-       //VisitStmt(returnstmt);
    }
+   virtual void VisitIntegerLiteral(IntegerLiteral * integer){
+       mEnv->intliteral(integer);
+   }
+   virtual void VisitUnaryOperator(UnaryOperator * unaryexpr){
+       VisitStmt(unaryexpr);
+       mEnv->unaryexpr(unaryexpr);
+   }
+   virtual void VisitArraySubscriptExpr(ArraySubscriptExpr *array){
+       VisitStmt(array);
+       mEnv->arraysub(array);
+   }
+   virtual void VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr * sizeofexpr){
+       VisitStmt(sizeofexpr);
+       mEnv->sizeofexpr(sizeofexpr);
+   }
+   virtual void VisitCastExpr(CastExpr * cast){
+       VisitStmt(cast);
+       mEnv->cast(cast);
+   }
+   virtual void VisitParenExpr(ParenExpr * paren){
+       VisitStmt(paren);
+       mEnv->paren(paren);
+   }
+
 private:
    Environment * mEnv;
 };
@@ -83,7 +101,9 @@ public:
 	   mEnv.init(decl);
 
 	   FunctionDecl * entry = mEnv.getEntry();
-	   mVisitor.VisitStmt(entry->getBody());
+       try{
+	        mVisitor.VisitStmt(entry->getBody());
+       }catch(ReturnException &e){}
   }
 private:
    Environment mEnv;
